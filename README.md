@@ -8,3 +8,6 @@ add vars:
 3. REDEPLOYED = 0
 
 now deploy & enjoy
+
+Copyright To https://github.com/Tazhossain
+Give proper Credits.
