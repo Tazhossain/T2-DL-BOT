@@ -36,10 +36,6 @@ def webhook():
         for user_id in SUDO_USERS:
             bot_started(user_id)
         
-        # Send "Bot started" message to all sudo groups
-        for group_id in SUDO_GROUP:
-            bot_started(group_id)
-        
         # Reset the REDEPLOYED environment variable to avoid sending the message again
         os.environ["REDEPLOYED"] = "0"
 
@@ -47,13 +43,12 @@ def webhook():
 
 url_dict = {}
 
-# Add sudo users and sudo group
+# Add sudo users
 SUDO_USERS = [1234, 1234]
-SUDO_GROUP = -1234, -1234
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    if message.from_user.id not in SUDO_USERS and message.chat.id not in SUDO_GROUP:
+    if message.from_user.id not in SUDO_USERS:
         return  # Do not respond to unauthorized users
     bot.reply_to(message, f"Welcome! This is a powerful Telegram downloader bot developed by Taz. Send me a link and I'll download it for you!")
 
@@ -71,7 +66,7 @@ def is_valid_url(url):
 
 @bot.message_handler(func=lambda message: True)
 def handle_downloadable(message):
-    if message.from_user.id not in SUDO_USERS and message.chat.id not in SUDO_GROUP:
+    if message.from_user.id not in SUDO_USERS:
         return  # Do not process messages from unauthorized users
     if not is_valid_url(message.text):
         bot.reply_to(message, "Please provide a valid URL from a supported platform.")
@@ -215,35 +210,6 @@ def handle_callback(call):
         time.sleep(10) 
         bot.delete_message(chat_id, sticker_message.message_id)
         bot.delete_message(chat_id, call.message.message_id)
-
-def search_youtube(query, max_results=5):
-    ydl_opts = {
-        'default_search': 'ytsearch',
-        'quiet': True,
-        'format': 'best'
-    }
-
-    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(query, download=False)
-
-    return info['entries'][:max_results]
-
-@bot.inline_handler(lambda query: query.query)
-def query_text(inline_query):
-    search_results = search_youtube(inline_query.query)
-
-    results = []
-    for entry in search_results:
-        result = types.InlineQueryResultArticle(
-            id=entry['id'],
-            title=entry['title'],
-            description=entry['uploader'],
-            input_message_content=types.InputTextMessageContent(message_text=entry['webpage_url']),
-            thumb_url=entry['thumbnail']
-        )
-        results.append(result)
-
-    bot.answer_inline_query(inline_query.id, results)
 
 if __name__ == "__main__":
     try:
