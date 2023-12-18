@@ -27,7 +27,7 @@ def getMessage():
 @server.route("/")
 def webhook():
     bot.remove_webhook()
-    bot.set_webhook(url='URL OF HOOK example.com' + TELEGRAM_BOT_TOKEN)
+    bot.set_webhook(url='https://example.your host.com/' + TELEGRAM_BOT_TOKEN)
     
     redeployed = os.environ.get("REDEPLOYED", "0")
     
@@ -48,8 +48,8 @@ def webhook():
 url_dict = {}
 
 # Add sudo users and sudo group
-SUDO_USERS = [1234, 5678]
-SUDO_GROUP = -1234, -5678
+SUDO_USERS = [1234, 1234]
+SUDO_GROUP = -1234, -1234
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -58,35 +58,16 @@ def send_welcome(message):
     bot.reply_to(message, f"Welcome! This is a powerful Telegram downloader bot developed by Taz. Send me a link and I'll download it for you!")
 
 def is_valid_url(url):
+    # Regular expression for a broad range of URLs
     pattern = re.compile(
         r'^(?:http|https)://'  # http or https
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain
-        r'localhost|'  # localhost
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+        r'(?:www\.)?'  # optional www subdomain
+        r'(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+'  # domain
+        r'[A-Z]{2,6}'  # TLD
         r'(?::\d+)?'  # optional port
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
-    if not pattern.match(url):
-        return False
-
-    supported_platforms = ['youtube.com', 'youtu.be', 'facebook.com', 'fb.watch', 'instagram.com', 'tiktok.com', 'twitter.com']
-    if not any(platform in url for platform in supported_platforms):
-        return False
-
-    return True
-
-def is_valid_url(url):
-    try:
-        with youtube_dl.YoutubeDL({'quiet': True}) as ydl:
-            ydl.extract_info(url, download=False)
-    except Exception as e:
-        return False
-    return True
-
-def is_downloadable(url):
-    if not url:
-        return False
-    return True
+    return bool(pattern.match(url))
 
 @bot.message_handler(func=lambda message: True)
 def handle_downloadable(message):
@@ -218,14 +199,14 @@ def handle_callback(call):
         if option.startswith('video'):
             try:
                 with open(file_path, 'rb') as f:
-                    sent_message = bot.send_video(chat_id, f, supports_streaming=True, timeout=120)
+                    sent_message = bot.send_video(chat_id, f, supports_streaming=True, timeout=300)
             except Exception as e:
                 bot.send_message(chat_id, f"Error: {str(e)}")
 
         elif option.startswith('audio'):
             try:
                 with open(file_path, 'rb') as f:
-                    sent_message = bot.send_audio(chat_id, f, timeout=120)
+                    sent_message = bot.send_audio(chat_id, f, timeout=300)
             except Exception as e:
                 bot.send_message(chat_id, f"Error: {str(e)}")
 
