@@ -1,215 +1,102 @@
 import os
 import tempfile
-import yt_dlp as youtube_dl
+import youtube_dl
+from flask import Flask, request
 import telebot
 from telebot import types
-import re
-import time
-import uuid
-import sys
-from flask import Flask, request
-import requests
-from bs4 import BeautifulSoup
-
 
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-STICKER_ID = os.environ.get('STICKER_ID')
+SUDO_USERS = [6896853746, 5641016852, 5705686446, 6166566680, 5303266118]  # Add your sudo users
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-
 server = Flask(__name__)
 
 @server.route('/' + TELEGRAM_BOT_TOKEN, methods=['POST'])
-def getMessage():
+def webhook():
     bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "!", 200
-
-@server.route("/")
-def webhook():
-    bot.remove_webhook()
-    bot.set_webhook(url='https://example.your host.com/' + TELEGRAM_BOT_TOKEN)
-    
-    redeployed = os.environ.get("REDEPLOYED", "0")
-    
-    if redeployed == "1":
-        # Send "Bot started" message to all sudo users
-        for user_id in SUDO_USERS:
-            bot_started(user_id)
-        
-        # Reset the REDEPLOYED environment variable to avoid sending the message again
-        os.environ["REDEPLOYED"] = "0"
-
-    return "!", 200
-
-url_dict = {}
-
-# Add sudo users
-SUDO_USERS = [1234, 1234]
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     if message.from_user.id not in SUDO_USERS:
-        return  # Do not respond to unauthorized users
-    bot.reply_to(message, f"Welcome! This is a powerful Telegram downloader bot developed by Taz. Send me a link and I'll download it for you!")
-
-def is_valid_url(url):
-    # Regular expression for a broad range of URLs
-    pattern = re.compile(
-        r'^(?:http|https)://'  # http or https
-        r'(?:www\.)?'  # optional www subdomain
-        r'(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+'  # domain
-        r'[A-Z]{2,6}'  # TLD
-        r'(?::\d+)?'  # optional port
-        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-
-    return bool(pattern.match(url))
+        return
+    bot.reply_to(message, "Welcome! This bot can download videos and audios. Just send me a link!")
 
 @bot.message_handler(func=lambda message: True)
 def handle_downloadable(message):
     if message.from_user.id not in SUDO_USERS:
-        return  # Do not process messages from unauthorized users
-    if not is_valid_url(message.text):
-        bot.reply_to(message, "Please provide a valid URL from a supported platform.")
         return
 
-    global url_dict
-    unique_id = str(uuid.uuid4())[:8]
-    url_dict[unique_id] = message.text
+    if not message.text or not message.text.startswith(('http://', 'https://')):
+        bot.reply_to(message, "Please provide a valid URL.")
+        return
 
     markup = types.InlineKeyboardMarkup()
-    markup.row(
-        types.InlineKeyboardButton("🎞️ Video", callback_data=f"video|{unique_id}"),
-        types.InlineKeyboardButton("🎵 Audio", callback_data=f"audio|{unique_id}")
-    )
-    markup.row(
-        types.InlineKeyboardButton("❌ Cancel", callback_data=f"cancel|{unique_id}")
-    )
+    markup.row(types.InlineKeyboardButton("🎞️ Video", callback_data=f"video|{message.text}"),
+               types.InlineKeyboardButton("🎵 Audio", callback_data=f"audio|{message.text}"))
+    markup.row(types.InlineKeyboardButton("❌ Cancel", callback_data="cancel"))
     bot.send_message(message.chat.id, "Choose an option:", reply_markup=markup)
-        
-def download_video(url, max_size):
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': os.path.join(tempfile.gettempdir(), '%(title)s.%(ext)s'),
-        'max_filesize': max_size
-    }
-
-    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        ydl.download([url])
-        file_path = ydl.prepare_filename(info)
-
-    return file_path
-
-def download_audio(url, max_size):
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'outtmpl': os.path.join(tempfile.gettempdir(), '%(title)s.%(ext)s'),
-        'max_filesize': max_size
-    }
-
-    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        ydl.download([url])
-        file_path = ydl.prepare_filename(info)
-
-    return file_path
-
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
-    option, unique_id = call.data.split('|', 1)
-    url = url_dict.get(unique_id)
+    option, url = call.data.split('|', 1)
     chat_id = call.message.chat.id
-    max_size = 50 * 1024 * 1024
 
     if option == 'cancel':
         bot.delete_message(chat_id, call.message.message_id)
         bot.send_message(chat_id, "Download process canceled.")
         return
 
-    if option == 'video' or option == 'audio':
-        markup = types.InlineKeyboardMarkup()
-        if option == 'video':
-            markup.row(
-                types.InlineKeyboardButton("High (720p)", callback_data=f"video_720|{unique_id}"),
-                types.InlineKeyboardButton("Medium (480p)", callback_data=f"video_480|{unique_id}")
-            )
-            markup.row(
-                types.InlineKeyboardButton("Low (360p)", callback_data=f"video_360|{unique_id}")
-            )
-            bot.edit_message_text("Choose a video quality:", chat_id, call.message.message_id, reply_markup=markup)
-        elif option == 'audio':
-            markup.row(
-                types.InlineKeyboardButton("High (192kbps)", callback_data=f"audio_192|{unique_id}"),
-                types.InlineKeyboardButton("Medium (128kbps)", callback_data=f"audio_128|{unique_id}")
-            )
-            markup.row(
-                types.InlineKeyboardButton("Low (64kbps)", callback_data=f"audio_64|{unique_id}")
-            )
-            bot.edit_message_text("Choose an audio quality:", chat_id, call.message.message_id, reply_markup=markup)
-        markup.row(
-            types.InlineKeyboardButton("❌ Cancel", callback_data=f"cancel|{unique_id}")
-        )
-        return
+    quality_options = {
+        'video': ['720', '480', '360'],
+        'audio': ['192', '128', '64']
+    }
 
-    if option.startswith('video'):
-        quality = option.split('_')[1]
-        ydl_opts = {
-            'format': f'bestvideo[height<={quality}][ext=mp4][filesize<='+str(max_size)+']+bestaudio[ext=m4a]/mp4',
-            'outtmpl': os.path.join(tempfile.gettempdir(), '%(title)s.%(ext)s'),
-            'merge_output_format': 'mp4',
-            'restrictfilenames': True,
-        }
-    elif option.startswith('audio'):
-        quality = option.split('_')[1]
-        ydl_opts = {
-            'format': f'bestaudio[abr<={quality}][filesize<=' + str(max_size) + ']/best',
-            'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': quality}],
-            'outtmpl': os.path.join(tempfile.gettempdir(), '%(title)s.%(ext)s'),
-            'merge_output_format': 'mp3',
-            'restrictfilenames': True,
-            'format': 'bestaudio/best',
-        }
+    markup = types.InlineKeyboardMarkup()
+    for quality in quality_options.get(option, []):
+        markup.row(types.InlineKeyboardButton(f"{quality} kbps", callback_data=f"{option}_{quality}|{url}"))
 
-    sticker_message = bot.send_sticker(chat_id, STICKER_ID)
-    sent_message = None
+    markup.row(types.InlineKeyboardButton("❌ Cancel", callback_data="cancel"))
+    bot.edit_message_text(f"Choose {option} quality:", chat_id, call.message.message_id, reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith(('video_', 'audio_')))
+def handle_quality_selection(call):
+    option, quality_url = call.data.split('|', 1)
+    option, quality = option.split('_')
+    chat_id = call.message.chat.id
+
+    max_size = 50 * 1024 * 1024
+    ydl_opts = {
+        'format': f'best{option}[abr<={quality}][filesize<={max_size}]/best',
+        'outtmpl': os.path.join(tempfile.gettempdir(), '%(title)s.%(ext)s'),
+        'merge_output_format': 'mp4' if option == 'video' else 'mp3',
+        'restrictfilenames': True,
+    }
+
     with tempfile.TemporaryDirectory() as tempdir:
         ydl_opts['outtmpl'] = os.path.join(tempdir, '%(title)s.%(ext)s')
 
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info)
-            if info.get('filesize') and info['filesize'] > max_size:
-                bot.send_message(chat_id, "The file size exceeds the 50 MB limit. Please try a different video or audio.")
+            try:
+                info = ydl.extract_info(quality_url, download=True)
+            except youtube_dl.utils.DownloadError as e:
+                bot.send_message(chat_id, f"Error: {e}")
                 return
 
-            if option.startswith('audio'):
-                file_path = os.path.splitext(file_path)[0] + '.mp3'
+            if info.get('filesize') and info['filesize'] > max_size:
+                bot.send_message(chat_id, f"The file size exceeds the 50 MB limit.")
+                return
 
-        if option.startswith('video'):
-            try:
-                with open(file_path, 'rb') as f:
-                    sent_message = bot.send_video(chat_id, f, supports_streaming=True, timeout=300)
-            except Exception as e:
-                bot.send_message(chat_id, f"Error: {str(e)}")
+            file_path = ydl.prepare_filename(info)
 
-        elif option.startswith('audio'):
-            try:
-                with open(file_path, 'rb') as f:
-                    sent_message = bot.send_audio(chat_id, f, timeout=300)
-            except Exception as e:
-                bot.send_message(chat_id, f"Error: {str(e)}")
+    with open(file_path, 'rb') as f:
+        if option == 'video':
+            bot.send_video(chat_id, f, supports_streaming=True)
+        elif option == 'audio':
+            bot.send_audio(chat_id, f)
 
-    if sent_message:
-        bot.send_chat_action(chat_id, 'upload_document')  # Simulate that the bot is still working
-        time.sleep(10) 
-        bot.delete_message(chat_id, sticker_message.message_id)
-        bot.delete_message(chat_id, call.message.message_id)
+    bot.send_message(chat_id, "Download complete!")
+    bot.delete_message(chat_id, call.message.message_id)
 
 if __name__ == "__main__":
     try:
