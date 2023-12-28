@@ -1,12 +1,6 @@
 python-telegram-bot
-beautifulsoup4
-certifi
-charset-normalizer
-idna
 requests
 telebot
-urllib3
 yt-dlp
 Flask
 gunicorn
-Werkzeug
