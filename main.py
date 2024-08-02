@@ -51,8 +51,7 @@ def download_and_send(chat_id, url, option):
                 output_file = os.path.join(output_dir, f"{sanitized_title}.{ext}")
 
                 if not os.path.isfile(output_file):
-                    output_file = [f for f in os.listdir(output_dir) if f.startswith(sanitized_title)][0]
-                    output_file = os.path.join(output_dir, output_file)
+                    output_file = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if f.startswith(sanitized_title)][0]
 
                 if os.path.getsize(output_file) > max_size:
                     bot.send_message(chat_id, "The file size exceeds the 500 MB limit. Try a different video or audio.")
@@ -100,5 +99,8 @@ def handle_callback(call):
         threading.Thread(target=download_and_send, args=(int(chat_id), url, option)).start()
 
 if __name__ == "__main__":
-    logger.info("Bot started.")
-    bot.polling(none_stop=True)
+    try:
+        logger.info("Bot started.")
+        bot.polling(none_stop=True)
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
